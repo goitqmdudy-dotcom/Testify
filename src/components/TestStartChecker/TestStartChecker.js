@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useFirebase } from '../../context/FirebaseContext';
@@ -7,11 +6,9 @@ import BlockedSubmissionCard from '../BlockedSubmissionCard/BlockedSubmissionCar
 
 function TestStartChecker({ testData, onPasswordPrompt, onStartTest }) {
   const { user } = useFirebase();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [showBlocked, setShowBlocked] = useState(false);
   const [blockMessage, setBlockMessage] = useState('');
-  const [submissionCount, setSubmissionCount] = useState(0);
 
   useEffect(() => {
     checkSubmissionStatus();
@@ -23,7 +20,6 @@ function TestStartChecker({ testData, onPasswordPrompt, onStartTest }) {
     try {
       setLoading(true);
       
-      // Check existing submissions
       const existingSubmissionsQuery = query(
         collection(db, 'results'),
         where('candidateId', '==', user.uid),
@@ -32,44 +28,26 @@ function TestStartChecker({ testData, onPasswordPrompt, onStartTest }) {
       const existingSubmissions = await getDocs(existingSubmissionsQuery);
       const submissionCount = existingSubmissions.size;
       
-      setSubmissionCount(submissionCount);
-      
-      console.log('Submission check:', {
-        submissionCount,
-        allowMultiple: testData.allowMultipleSubmissions,
-        testId: testData.testId || testData.id
-      });
 
-      // Logic based on submission count and settings
       if (submissionCount === 0) {
-        // First attempt - show password box directly
-        console.log('First attempt - showing password prompt');
         onPasswordPrompt();
       } else if (submissionCount > 0 && !testData.allowMultipleSubmissions) {
-        // Not first attempt and multiple submissions not allowed - show blocked card
-        console.log('Multiple submissions not allowed - showing blocked card');
         setBlockMessage(
           `This test does not allow multiple submissions. You have already submitted this test ${submissionCount} time${submissionCount > 1 ? 's' : ''}. Please contact your domain head if you need to retake this test.`
         );
         setShowBlocked(true);
       } else if (submissionCount > 0 && testData.allowMultipleSubmissions) {
-        // Multiple submissions allowed - check limit
         if (submissionCount >= 3) {
-          console.log('Maximum attempts reached - showing blocked card');
           setBlockMessage(
             `You have reached the maximum number of attempts (3) for this test. You have already submitted this test ${submissionCount} times. Please contact your domain head if you need additional attempts.`
           );
           setShowBlocked(true);
         } else {
-          // Within limit - show password box
-          console.log(`Attempt ${submissionCount + 1}/3 - showing password prompt`);
           onPasswordPrompt();
         }
       }
       
     } catch (error) {
-      console.error('Error checking submission status:', error);
-      // On error, default to showing password prompt
       onPasswordPrompt();
     } finally {
       setLoading(false);
@@ -109,7 +87,6 @@ function TestStartChecker({ testData, onPasswordPrompt, onStartTest }) {
     return <BlockedSubmissionCard message={blockMessage} />;
   }
 
-  // If we reach here, the password prompt should be shown by the parent component
   return null;
 }
 

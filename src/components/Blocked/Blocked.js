@@ -12,7 +12,6 @@ function Blocked() {
       await signOut(auth);
       navigate('/login');
     } catch (error) {
-      console.error('Error signing out:', error);
     }
   };
 

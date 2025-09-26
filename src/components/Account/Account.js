@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { useFirebase } from '../../context/FirebaseContext';
-import { db, auth } from '../../firebase';
+import { db } from '../../firebase';
 
 function Account() {
   const navigate = useNavigate();
@@ -73,7 +73,6 @@ function Account() {
       console.error('Failed to save account:', e);
       setError(e.message || 'Failed to update account.');
     } finally {
-      setSaving(false);
     }
   };
 

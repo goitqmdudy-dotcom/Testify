@@ -31,7 +31,6 @@ function Login() {
       setSuccess('Login successful! Redirecting...');
       setTimeout(() => navigate('/dashboard'), 800);
     } catch (err) {
-      console.log('[signin:error]', err.code, err.message);
       const byCode = {
         'auth/invalid-credential': 'Invalid email or password. Please try again.',
         'auth/wrong-password': 'Incorrect password. Try again or reset it.',
@@ -47,21 +46,17 @@ function Login() {
   
   return (
     <div className="login-container" role="main">
-      {/* Background Illustrations */}
       <div className="login-background login-bg-1"></div>
       <div className="login-background login-bg-2"></div>
       <div className="login-background login-bg-3"></div>
       <div className="login-background login-bg-4"></div>
 
-      {/* Main Login Container */}
       <div className="login-main">
-        {/* Brand Header */}
         <div className="login-header">
           <h1 className="login-title">Welcome Back</h1>
           <p className="login-subtitle">Sign in to continue</p>
         </div>
 
-        {/* Login Form Card */}
         <div className="login-card">
             {error && (
               <div className="login-error" role="alert" aria-live="assertive">
@@ -76,7 +71,6 @@ function Login() {
 
             <form className="login-form" onSubmit={handleSubmit} aria-describedby="form-help">
               <div className="login-form-fields">
-                {/* Email Field */}
                 <div className="login-field">
                   <label className="login-label" htmlFor="email">
                     Email
@@ -99,7 +93,6 @@ function Login() {
                   )}
                 </div>
 
-                {/* Password Field */}
                 <div className="login-field">
                   <label className="login-label" htmlFor="password">
                     Password
@@ -123,7 +116,6 @@ function Login() {
                 </div>
 
 
-                {/* Login Button */}
                 <button 
                   className={`btn btn-primary ${loading ? 'btn-loading' : ''}`}
                   type="submit"
@@ -133,7 +125,6 @@ function Login() {
                 </button>
               </div>
 
-              {/* Sign Up Link */}
               <div className="login-link-container">
                 <span className="login-link-text">Don't have an account? </span>
                 <Link

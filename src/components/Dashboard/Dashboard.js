@@ -15,12 +15,10 @@ function Dashboard() {
     return <Loading message="Loading dashboard" subtext="Please wait while we prepare your workspace" />;
   }
 
-  // Check if user is blocked first
   if (blocked) {
     return <Blocked />;
   }
 
-  // Route to appropriate dashboard based on user role
   if (role === 'admin') {
     return <AdminDashboard />;
   } else if (role === 'head') {

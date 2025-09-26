@@ -23,19 +23,8 @@ const Leaderboard = () => {
   const isCandidate = userDoc?.role === 'candidate' || !userDoc?.role;
   const canPublish = isAdmin || isHead;
   
-  // Debug logging for permissions
-  console.log('User permissions:', {
-    role: userDoc?.role,
-    isAdmin,
-    isHead,
-    isCandidate,
-    canPublish,
-    domain: userDoc?.domain
-  });
 
-  // Load all tests and published leaderboards
   useEffect(() => {
-    // Don't load if userDoc is not available yet
     if (!userDoc) {
       return;
     }
@@ -43,9 +32,8 @@ const Leaderboard = () => {
     const loadTests = async () => {
       try {
         setLoading(true);
-        setError(''); // Clear any previous errors
+        setError('');
         
-        // Load tests
         const testsRef = collection(db, 'tests');
         const snapshot = await getDocs(testsRef);
         const testsData = snapshot.docs.map(doc => ({
@@ -53,13 +41,11 @@ const Leaderboard = () => {
           ...doc.data()
         }));
         
-        // Filter tests based on user role
         let filteredTests = testsData;
         if (userDoc?.role === 'head' && userDoc?.domain) {
           filteredTests = testsData.filter(test => test.domain === userDoc.domain);
         }
         
-        // Extract publication status from tests data
         const publishedData = {};
         filteredTests.forEach(test => {
           if (test.leaderboardPublished === true) {
@@ -78,7 +64,6 @@ const Leaderboard = () => {
         setPublishedLeaderboards(publishedData);
         setLoading(false);
       } catch (err) {
-        console.error('Error loading tests and leaderboards:', err);
         setError(`Failed to load tests: ${err.message || 'Unknown error'}`);
         setLoading(false);
       }
@@ -87,15 +72,13 @@ const Leaderboard = () => {
     loadTests();
   }, [userDoc]);
 
-  // Load leaderboard data for selected test
   const loadLeaderboard = async (test) => {
     try {
       setLoadingLeaderboard(true);
       setSelectedTest(test);
-      setError(''); // Clear any errors
-      setLeaderboardData([]); // Clear previous data
+      setError('');
+      setLeaderboardData([]);
       
-      // Fetch all submissions for this test
       const resultsQuery = query(
         collection(db, 'results'),
         where('testId', '==', test.id),
@@ -103,28 +86,15 @@ const Leaderboard = () => {
       );
       
       const snapshot = await getDocs(resultsQuery);
-      console.log(`Loading leaderboard for test: ${test.title}, found ${snapshot.docs.length} submissions`);
       
       const submissions = await Promise.all(snapshot.docs.map(async (doc) => {
         const data = doc.data();
-        console.log('Raw submission data:', {
-          id: doc.id,
-          candidateName: data.candidateName,
-          totalMarksAwarded: data.totalMarksAwarded,
-          maxPossibleMarks: data.maxPossibleMarks,
-          score: data.score,
-          testTotalMarks: test.totalMarks,
-          questionMarks: data.questionMarks
-        });
         
-        // Try to get better candidate name
         let candidateName = data.candidateName || 'Unknown';
         if (data.candidateId) {
           try {
-            // Try multiple approaches to get user data
             let userData = null;
             
-            // First try: query by uid field
             try {
               const userQuery = query(
                 collection(db, 'user'),
@@ -135,10 +105,8 @@ const Leaderboard = () => {
                 userData = userSnapshot.docs[0].data();
               }
             } catch (queryError) {
-              console.log('Query by uid failed, trying direct document access');
             }
             
-            // Second try: direct document access
             if (!userData) {
               try {
                 const userDocRef = doc(db, 'user', data.candidateId);
@@ -147,78 +115,59 @@ const Leaderboard = () => {
                   userData = userDocSnap.data();
                 }
               } catch (docError) {
-                console.log('Direct document access failed');
               }
             }
             
-            // Use the best available name
             if (userData) {
               candidateName = userData.name || userData.displayName || userData.fullName || userData.firstName || candidateName;
             }
           } catch (error) {
-            console.log('Could not fetch user data for candidate:', data.candidateId, error);
           }
         }
         
-        // Calculate correct marks and validate data
         let maxPossibleMarks = data.maxPossibleMarks || test.totalMarks || 100;
         let totalMarksAwarded = data.totalMarksAwarded || 0;
         
-        // Try to recalculate from individual question marks if available
         if (data.questionMarks && typeof data.questionMarks === 'object') {
           const questionMarksArray = Object.values(data.questionMarks);
           if (questionMarksArray.length > 0) {
-            // Recalculate total awarded marks from individual questions
             const calculatedTotal = questionMarksArray.reduce((sum, mark) => {
               const numMark = parseFloat(mark) || 0;
               return sum + numMark;
             }, 0);
             
-            console.log(`Recalculating marks from questions: ${calculatedTotal} (was ${totalMarksAwarded})`);
             totalMarksAwarded = calculatedTotal;
           }
         }
         
-        // If we still have invalid data, try to get correct max marks from test
         if (test.totalMarks && test.totalMarks > 0) {
           maxPossibleMarks = test.totalMarks;
         }
         
-        // Final validation - ensure awarded marks don't exceed maximum
         if (totalMarksAwarded > maxPossibleMarks) {
-          console.warn(`Invalid marks detected: ${totalMarksAwarded}/${maxPossibleMarks} for candidate ${candidateName}. Capping to maximum.`);
           totalMarksAwarded = maxPossibleMarks;
         }
         
-        // Ensure minimum values
         totalMarksAwarded = Math.max(0, totalMarksAwarded);
         maxPossibleMarks = Math.max(1, maxPossibleMarks);
         
-        // Recalculate score percentage
         const score = Math.round((totalMarksAwarded / maxPossibleMarks) * 100);
         
         const finalResult = {
           id: doc.id,
           candidateName,
           candidateId: data.candidateId,
-          totalMarksAwarded: Math.max(0, totalMarksAwarded), // Ensure non-negative
-          maxPossibleMarks: Math.max(1, maxPossibleMarks), // Ensure at least 1
-          score: Math.max(0, Math.min(100, score)), // Ensure 0-100 range
+          totalMarksAwarded: Math.max(0, totalMarksAwarded),
+          maxPossibleMarks: Math.max(1, maxPossibleMarks),
+          score: Math.max(0, Math.min(100, score)),
           submittedAt: data.submittedAt,
           timeTaken: data.timeTaken || 0,
           questionMarks: data.questionMarks || {}
         };
         
-        console.log('Final processed data:', {
-          candidateName: finalResult.candidateName,
-          marks: `${finalResult.totalMarksAwarded}/${finalResult.maxPossibleMarks}`,
-          score: `${finalResult.score}%`
-        });
-        
         return finalResult;
       }));
       
-      // Sort by total marks (descending) and then by time taken (ascending)
       const sortedSubmissions = submissions.sort((a, b) => {
         if (b.totalMarksAwarded !== a.totalMarksAwarded) {
           return b.totalMarksAwarded - a.totalMarksAwarded;
@@ -226,7 +175,6 @@ const Leaderboard = () => {
         return a.timeTaken - b.timeTaken;
       });
       
-      // Add rank to each submission
       const rankedSubmissions = sortedSubmissions.map((submission, index) => ({
         ...submission,
         rank: index + 1
@@ -235,13 +183,11 @@ const Leaderboard = () => {
       setLeaderboardData(rankedSubmissions);
       setLoadingLeaderboard(false);
     } catch (err) {
-      console.error('Error loading leaderboard data:', err);
       setError(`Failed to load leaderboard data: ${err.message || 'Unknown error'}`);
       setLoadingLeaderboard(false);
     }
   };
 
-  // Calculate pie chart data
   const getPieChartData = () => {
     if (leaderboardData.length === 0) return [];
     
@@ -253,7 +199,6 @@ const Leaderboard = () => {
     ];
     
     leaderboardData.forEach(submission => {
-      // Use the already validated score instead of recalculating
       const percentage = submission.score;
       const range = ranges.find(r => percentage >= r.min && percentage <= r.max);
       if (range) range.count++;
@@ -262,14 +207,12 @@ const Leaderboard = () => {
     return ranges.filter(range => range.count > 0);
   };
 
-  // Format date
   const formatDate = (timestamp) => {
     if (!timestamp) return 'N/A';
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
   };
 
-  // Get rank badge color
   const getRankBadgeColor = (rank) => {
     if (rank === 1) return 'gold';
     if (rank === 2) return 'silver';
@@ -277,34 +220,21 @@ const Leaderboard = () => {
     return 'default';
   };
 
-  // Toggle leaderboard publication
   const toggleLeaderboardPublication = async (testId, testTitle) => {
-    console.log('Toggle publication called:', {
-      testId,
-      testTitle,
-      canPublish,
-      userRole: userDoc?.role,
-      isHead,
-      isAdmin
-    });
-    
     if (!canPublish) {
-      console.warn('User does not have publish permissions');
       return;
     }
     
     try {
       setPublishing(true);
-      setError(''); // Clear any previous errors
+      setError('');
       
       const isCurrentlyPublished = publishedLeaderboards[testId]?.published;
       const newStatus = !isCurrentlyPublished;
       
-      // Use the tests collection to store publication status instead
       const testRef = doc(db, 'tests', testId);
       
       if (newStatus) {
-        // Publishing - set the field to true
         await updateDoc(testRef, {
           leaderboardPublished: true,
           publishedBy: userDoc?.uid || 'unknown',
@@ -312,7 +242,6 @@ const Leaderboard = () => {
           publisherRole: userDoc?.role || 'unknown'
         });
       } else {
-        // Unpublishing - remove the field or set to false
         await updateDoc(testRef, {
           leaderboardPublished: false,
           unpublishedBy: userDoc?.uid || 'unknown',
@@ -320,7 +249,6 @@ const Leaderboard = () => {
         });
       }
       
-      // Update local state
       if (newStatus) {
         setPublishedLeaderboards(prev => ({
           ...prev,
@@ -334,7 +262,6 @@ const Leaderboard = () => {
           }
         }));
       } else {
-        // Remove from published leaderboards when unpublishing
         setPublishedLeaderboards(prev => {
           const updated = { ...prev };
           delete updated[testId];
@@ -344,12 +271,7 @@ const Leaderboard = () => {
       
       setPublishing(false);
       
-      // Show success message
-      const action = newStatus ? 'published' : 'unpublished';
-      console.log(`Leaderboard ${action} successfully for test: ${testTitle}`);
-      
     } catch (error) {
-      console.error('Error updating leaderboard publication:', error);
       const isCurrentlyPublished = publishedLeaderboards[testId]?.published;
       const attemptedAction = !isCurrentlyPublished ? 'publish' : 'unpublish';
       setError(`Failed to ${attemptedAction} leaderboard: ${error.message}`);
@@ -357,20 +279,16 @@ const Leaderboard = () => {
     }
   };
 
-  // Check if leaderboard is published for candidates
   const isLeaderboardPublished = (testId) => {
-    // Check both the publishedLeaderboards state and the test's leaderboardPublished field
     const fromState = publishedLeaderboards[testId]?.published === true;
     const test = tests.find(t => t.id === testId);
     const fromTest = test?.leaderboardPublished === true;
     return fromState || fromTest;
   };
 
-  // Retry loading function
   const retryLoading = () => {
     setError('');
     setLoading(true);
-    // Trigger the useEffect to reload
     if (userDoc) {
       const loadTests = async () => {
         try {
@@ -407,7 +325,6 @@ const Leaderboard = () => {
           setPublishedLeaderboards(publishedData);
           setLoading(false);
         } catch (err) {
-          console.error('Error loading tests and leaderboards:', err);
           setError(`Failed to load tests: ${err.message || 'Unknown error'}`);
           setLoading(false);
         }
@@ -416,7 +333,6 @@ const Leaderboard = () => {
     }
   };
 
-  // Render pie chart (simple CSS-based)
   const renderPieChart = () => {
     const data = getPieChartData();
     if (data.length === 0) return null;
@@ -502,7 +418,6 @@ const Leaderboard = () => {
     );
   }
 
-  // Show video for candidates when no leaderboards are published
   if (isCandidate && Object.keys(publishedLeaderboards).length === 0) {
     return (
       <div className="leaderboard-container">
@@ -556,18 +471,9 @@ const Leaderboard = () => {
                           className={`btn btn-sm ${isPublished ? 'btn-danger' : 'btn-success'}`}
                           onClick={async (e) => {
                             e.stopPropagation();
-                            console.log('Publication button clicked:', {
-                              testId: test.id,
-                              testTitle: test.title,
-                              currentStatus: isPublished,
-                              userRole: userDoc?.role,
-                              canPublish
-                            });
                             try {
                               await toggleLeaderboardPublication(test.id, test.title);
                             } catch (error) {
-                              // Error is already handled in the function
-                              console.log('Publication toggle completed with error');
                             }
                           }}
                           disabled={publishing}
@@ -676,7 +582,6 @@ const Leaderboard = () => {
             <Loading message="Loading leaderboard" subtext="Calculating rankings and performance data" />
           ) : (
             <div className="leaderboard-dashboard">
-              {/* Performance Overview */}
               <div className="performance-overview">
                 <div className="overview-stats">
                   <div className="stat-card">
@@ -699,14 +604,12 @@ const Leaderboard = () => {
                   </div>
                 </div>
                 
-                {/* Pie Chart */}
                 <div className="chart-section">
                   <h3>Performance Distribution</h3>
                   {renderPieChart()}
                 </div>
               </div>
 
-              {/* Leaderboard Table */}
               <div className="leaderboard-table-section">
                 <h3>Rankings</h3>
                 <div className="table-container">

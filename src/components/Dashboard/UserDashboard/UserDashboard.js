@@ -10,7 +10,6 @@ import BlockedSubmissionCard from '../../BlockedSubmissionCard/BlockedSubmission
 import Icon from '../../icons/Icon';
 import './UserDashboard.css';
 
-// Candidate Tests Component
 function CandidateTests() {
   const navigate = useNavigate();
   const { user } = useFirebase();
@@ -28,19 +27,15 @@ function CandidateTests() {
       setError('');
       try {
         const testsRef = collection(db, 'tests');
-        // Remove the status filter to show all tests
         const q = testsRef;
         const snap = await getDocs(q);
         
-        // Filter out tests that are not active or published
         const now = new Date();
         const testsData = snap.docs
           .map(d => ({ id: d.id, ...d.data() }))
           .filter(test => {
-            // Include test if it's active or doesn't have a status field (for backward compatibility)
             const isActive = !test.status || test.status === 'active';
             
-            // Check if test has an end date and if it's still valid
             const hasValidEndDate = !test.endDate || 
                                   (test.endDate?.toDate && test.endDate.toDate() > now) ||
                                   (test.endDate?.seconds && new Date(test.endDate.seconds * 1000) > now);
@@ -48,7 +43,6 @@ function CandidateTests() {
             return isActive && hasValidEndDate;
           });
         
-        // Deduplicate tests by title and branch
         const testMap = new Map();
         testsData.forEach(test => {
           const key = `${test.title}_${test.branch}`;
@@ -57,8 +51,6 @@ function CandidateTests() {
           if (!existingTest) {
             testMap.set(key, test);
           } else {
-            // If test has an end date, keep the one with the latest end date
-            // Otherwise, keep the most recently created one
             const existingEndDate = existingTest.endDate?.toDate?.() || existingTest.endDate?.seconds ? 
               new Date(existingTest.endDate.seconds * 1000) : null;
             const currentEndDate = test.endDate?.toDate?.() || test.endDate?.seconds ? 
@@ -69,7 +61,6 @@ function CandidateTests() {
                 testMap.set(key, test);
               }
             } else {
-              // Fall back to creation date if end dates are not available
               const existingTime = existingTest.createdAt?.toDate?.()?.getTime() || 0;
               const currentTime = test.createdAt?.toDate?.()?.getTime() || 0;
               
@@ -83,7 +74,6 @@ function CandidateTests() {
         const uniqueTests = Array.from(testMap.values());
         setTests(uniqueTests);
       } catch (e) {
-        console.log('[Candidate:loadTests:error]', e.code, e.message);
         setError(e.message || 'Failed to load tests');
       } finally {
         setLoading(false);
@@ -92,13 +82,11 @@ function CandidateTests() {
     loadTests();
   }, []);
 
-  // Function to check submissions before starting test
   const checkSubmissionsAndStart = async (test) => {
     if (!user) return;
 
     setCheckingSubmissions(true);
     try {
-      // Check existing submissions
       const existingSubmissionsQuery = query(
         collection(db, 'results'),
         where('candidateId', '==', user.uid),
@@ -107,44 +95,26 @@ function CandidateTests() {
       const existingSubmissions = await getDocs(existingSubmissionsQuery);
       const submissionCount = existingSubmissions.size;
       
-      console.log('UserDashboard submission check:', {
-        submissionCount,
-        allowMultiple: test.allowMultipleSubmissions,
-        testId: test.id,
-        shouldBlock: submissionCount >= 3 && test.allowMultipleSubmissions,
-        attemptNumber: submissionCount + 1
-      });
 
-      // Logic based on submission count and settings
       if (submissionCount === 0) {
-        // First attempt - proceed to test
-        console.log('First attempt - proceeding to test');
         navigate(`/test/${test.id}`);
       } else if (submissionCount > 0 && !test.allowMultipleSubmissions) {
-        // Not first attempt and multiple submissions not allowed - show blocked card
-        console.log('Multiple submissions not allowed - showing blocked card');
         setBlockMessage(
           `This test does not allow multiple submissions. You have already submitted this test ${submissionCount} time${submissionCount > 1 ? 's' : ''}. Please contact your branch head if you need to retake this test.`
         );
         setShowBlockedCard(true);
       } else if (submissionCount > 0 && test.allowMultipleSubmissions) {
-        // Multiple submissions allowed - check limit (allow up to 3 total submissions)
         if (submissionCount >= 3) {
-          console.log('Maximum attempts reached - showing blocked card');
           setBlockMessage(
             `You have reached the maximum number of attempts (3) for this test. You have already submitted this test ${submissionCount} times. Please contact your branch head if you need additional attempts.`
           );
           setShowBlockedCard(true);
         } else {
-          // Within limit - proceed to test (submissions 2 and 3)
-          console.log(`Attempt ${submissionCount + 1}/3 - proceeding to test`);
           navigate(`/test/${test.id}`);
         }
       }
       
     } catch (error) {
-      console.error('Error checking submission status:', error);
-      // On error, default to proceeding to test
       navigate(`/test/${test.id}`);
     } finally {
       setCheckingSubmissions(false);
@@ -263,7 +233,6 @@ function CandidateTests() {
   );
 }
 
-// Candidate Results Component
 function CandidateResults() {
   const [results, setResults] = useState([]);
   const [filteredResults, setFilteredResults] = useState([]);
@@ -272,7 +241,6 @@ function CandidateResults() {
   const [error, setError] = useState('');
   const { user, userDoc } = useFirebase();
 
-  // Filter results based on search term
   useEffect(() => {
     if (!searchTerm.trim()) {
       setFilteredResults(results);
@@ -293,26 +261,21 @@ function CandidateResults() {
       setError('');
       try {
         const resultsRef = collection(db, 'results');
-        // Fetch results with status 'submitted' or 'evaluated' only (exclude auto-submitted)
         const q = query(
           resultsRef, 
           where('candidateId', '==', user.uid),
           where('status', 'in', ['submitted', 'evaluated'])
         );
         const snap = await getDocs(q);
-        // Process results and fetch test details for each
         const resultsWithTestData = await Promise.all(snap.docs.map(async (d) => {
           const resultData = { id: d.id, ...d.data() };
           
-          // Fetch test data to get the title and totalMarks
           try {
             const testDoc = await getDoc(doc(db, 'tests', resultData.testId));
             if (testDoc.exists()) {
               const testData = testDoc.data();
               resultData.testTitle = testData.title;
-              // If totalMarks is not in the result, try to get it from the test
               if (resultData.totalMarks === undefined) {
-                // Try to calculate totalMarks from questions if not directly available
                 if (testData.questions?.length > 0) {
                   resultData.totalMarks = testData.questions.reduce((sum, q) => {
                     return sum + (q.marks || 1);
@@ -323,20 +286,17 @@ function CandidateResults() {
               }
             }
           } catch (error) {
-            console.error('Error fetching test data:', error);
           }
           
           return resultData;
         }));
         
-        // Sort by submission date (newest first)
         resultsWithTestData.sort((a, b) => {
           const timeA = a.submittedAt?.toDate?.() ? a.submittedAt.toDate().getTime() : 0;
           const timeB = b.submittedAt?.toDate?.() ? b.submittedAt.toDate().getTime() : 0;
           return timeB - timeA;
         });
         
-        // Remove duplicate submissions - keep only the latest submission per test
         const uniqueResults = [];
         const seenTestIds = new Set();
         
@@ -348,9 +308,8 @@ function CandidateResults() {
         }
         
         setResults(uniqueResults);
-        setFilteredResults(uniqueResults); // Initialize filtered results with unique results
+        setFilteredResults(uniqueResults);
       } catch (e) {
-        console.log('[Candidate:loadResults:error]', e.code, e.message);
         setError(e.message || 'Failed to load results');
       } finally {
         setLoading(false);
@@ -411,11 +370,9 @@ function CandidateResults() {
                 <div className="score-display">
                   <span className="score-value">
                     {(() => {
-                      // Show actual marks awarded, not percentage
                       if (result.totalMarksAwarded !== undefined && result.totalMarksAwarded !== null) {
                         return result.totalMarksAwarded;
                       } else if (result.score !== undefined && result.totalMarks !== undefined) {
-                        // Calculate actual marks from percentage
                         return Math.round((result.score / 100) * result.totalMarks);
                       } else {
                         return '--';
@@ -447,15 +404,6 @@ function CandidateResults() {
   );
 }
 
-// Placeholder for future candidate features
-// function CandidateProfile() {
-//   return (
-//     <div className="candidate-profile">
-//       <h2>Profile Settings</h2>
-//       <p>Profile management will be available soon.</p>
-//     </div>
-//   );
-// }
 
 function UserDashboard() {
   const navigate = useNavigate();
@@ -465,7 +413,6 @@ function UserDashboard() {
 
   const themeClass = 'theme-candidate';
 
-  // Set default tab for candidates
   useEffect(() => {
     setActiveTab('tests');
   }, []);
@@ -481,7 +428,6 @@ function UserDashboard() {
       await signOut(auth);
       navigate('/');
     } catch (error) {
-      console.error('Sign out error:', error);
     }
   };
 
