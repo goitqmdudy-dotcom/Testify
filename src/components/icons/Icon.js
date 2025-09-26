@@ -1,7 +1,6 @@
 import React from 'react';
 import './Icon.css';
 
-// Import all the 3D icons
 import calendarIcon from './3dicons-calender-dynamic-color.png';
 import computerIcon from './3dicons-computer-dynamic-color.png';
 import copyIcon from './3dicons-copy-dynamic-color.png';
@@ -18,72 +17,59 @@ import secondPlaceIcon from './2nd-place.png';
 import thirdPlaceIcon from './3rd-place.png';
 import leaderboardIcon from './leaderboard.png';
 
-// Icon mapping
 const iconMap = {
-  // Document/Paper related
   'document': fileTextIcon,
   'paper': fileTextIcon,
   'file': fileTextIcon,
   'text': fileTextIcon,
   
-  // Data/Analytics related
   'chart': computerIcon,
   'submissions': computerIcon,
   'analytics': computerIcon,
   'data': computerIcon,
   
-  // Actions
   'copy': copyIcon,
   'duplicate': copyIcon,
   
-  // Calendar/Time
   'calendar': calendarIcon,
   'schedule': calendarIcon,
   'date': calendarIcon,
   
-  // Success/Achievement
   'success': thumbUpIcon,
   'approve': thumbUpIcon,
   'like': thumbUpIcon,
   'correct': thumbUpIcon,
   
-  // Security/Admin
   'shield': shieldIcon,
   'security': shieldIcon,
   'admin': shieldIcon,
   'protect': shieldIcon,
   
-  // Performance/Target
   'target': targetIcon,
   'goal': targetIcon,
   'performance': targetIcon,
   'score': targetIcon,
   
-  // Communication
   'mail': mailIcon,
   'email': mailIcon,
   'message': mailIcon,
   'notification': mailIcon,
   
-  // Learning/Education
   'notebook': notebookIcon,
   'learn': notebookIcon,
   'education': notebookIcon,
   'study': notebookIcon,
   
-  // Energy/Activity
   'fire': fireIcon,
   'energy': fireIcon,
   'active': fireIcon,
   'hot': fireIcon,
   
-  // User/Profile
   'user': girlIcon,
   'profile': girlIcon,
   'candidate': girlIcon,
   'person': girlIcon,
   
-  // Rankings/Awards
   'first': firstPlaceIcon,
   '1st': firstPlaceIcon,
   'gold': firstPlaceIcon,
@@ -100,7 +86,6 @@ const iconMap = {
   'bronze': thirdPlaceIcon,
   'third-place': thirdPlaceIcon,
   
-  // Leaderboard
   'leaderboard': leaderboardIcon,
   'ranking': leaderboardIcon,
   'standings': leaderboardIcon,
@@ -117,7 +102,6 @@ const Icon = ({
   const iconSrc = iconMap[name];
   
   if (!iconSrc) {
-    console.warn(`Icon "${name}" not found. Available icons:`, Object.keys(iconMap));
     return null;
   }
   

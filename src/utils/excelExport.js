@@ -2,23 +2,12 @@ import * as XLSX from 'xlsx';
 import { doc, getDoc, collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 
-/**
- * Export test submissions to Excel format
- * @param {Object} params - Export parameters
- * @param {Array} params.submissions - Array of submission objects
- * @param {Object} params.selectedTest - Test object with details
- * @param {Function} params.setLoading - Loading state setter
- * @returns {Promise<void>}
- */
 export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setLoading }) => {
   try {
     setLoading(true);
     
-    // First, fetch the test questions to get actual question text
     let testQuestions = [];
     try {
-      // 1) Prefer the questions subcollection (source of truth used elsewhere in app)
-      console.log('ExcelExport: Fetching questions from subcollection tests/{id}/questions');
       const questionsSnapshot = await getDocs(collection(db, 'tests', selectedTest.id, 'questions'));
       if (!questionsSnapshot.empty) {
         testQuestions = questionsSnapshot.docs.map(qDoc => {
@@ -28,52 +17,33 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
             ...data,
           };
         });
-        console.log('ExcelExport: Loaded questions from subcollection:', testQuestions);
       }
 
-      // 2) Fallback to embedded questions array on tests doc
       if (testQuestions.length === 0) {
-        console.log('ExcelExport: Subcollection empty, trying embedded questions on tests doc');
         const testDoc = await getDoc(doc(db, 'tests', selectedTest.id));
         if (testDoc.exists()) {
           const testData = testDoc.data();
           testQuestions = testData.questions || [];
-          console.log('ExcelExport: Loaded embedded questions from tests doc:', testQuestions);
         }
       }
 
-      // 3) Alternate collection name (legacy)
       if (testQuestions.length === 0) {
-        console.log('ExcelExport: Trying legacy collection "test"');
         const altTestDoc = await getDoc(doc(db, 'test', selectedTest.id));
         if (altTestDoc.exists()) {
           const altTestData = altTestDoc.data();
           testQuestions = altTestData.questions || [];
-          console.log('ExcelExport: Loaded questions from legacy collection:', testQuestions);
         }
       }
 
-      // 4) Fallback to selectedTest object (runtime state)
       if (testQuestions.length === 0 && selectedTest.questions) {
         testQuestions = selectedTest.questions;
-        console.log('ExcelExport: Loaded questions from selectedTest prop:', testQuestions);
       }
     } catch (error) {
-      console.error('ExcelExport: Error fetching test questions:', error);
     }
 
-    // Debug: Log the submissions data structure
-    console.log('=== EXCEL EXPORT DEBUG ===');
-    console.log('Number of submissions:', submissions.length);
-    console.log('First submission structure:', submissions[0]);
-    console.log('Test questions:', testQuestions);
 
-    // Fetch detailed user information and answers for each submission
     const enrichedSubmissions = await Promise.all(
       submissions.map(async (submission, submissionIndex) => {
-        console.log(`\n--- Processing submission ${submissionIndex + 1} ---`);
-        console.log('Submission data:', submission);
-        
         let userInfo = {
           fullName: submission.candidateName || 'Unknown',
           gmail: '',
@@ -94,11 +64,9 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
               };
             }
           } catch (error) {
-            console.error('Error fetching user data for export:', error);
           }
         }
 
-        // Create base row data with required columns first
         const rowData = {
           'Student Name': userInfo.fullName,
           'Mobile Number': userInfo.mobile,
@@ -106,32 +74,15 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
           'Year': userInfo.year
         };
 
-        // Add question answers with actual question text as headers
-        console.log('Checking answers for submission:', submission.id || submissionIndex);
-        console.log('submission.answers exists?', !!submission.answers);
-        console.log('submission.answers:', submission.answers);
-        
-        // Also check other possible answer fields
-        console.log('Other possible fields:');
-        console.log('- submission.responses:', submission.responses);
-        console.log('- submission.userAnswers:', submission.userAnswers);
-        console.log('- submission.candidateAnswers:', submission.candidateAnswers);
-        console.log('- submission.testAnswers:', submission.testAnswers);
-        
         if (submission.answers && typeof submission.answers === 'object') {
-          // Get all answer keys that are not metadata
           const answerKeys = Object.keys(submission.answers).filter(key => 
             !key.includes('_notes') && 
             !key.includes('timestamp') && 
             !key.includes('metadata')
           );
-          console.log('Filtered answer keys:', answerKeys);
           
-          // If we have test questions, use them. Otherwise, use answer keys directly
           if (testQuestions.length > 0) {
-            // Sort test questions by their original order to maintain sequence
             const sortedQuestions = [...testQuestions].sort((a, b) => {
-              // Strategy 1: If questions have an 'order' or 'index' field, use that
               if (a.order !== undefined && b.order !== undefined) {
                 return a.order - b.order;
               }
@@ -139,49 +90,37 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
                 return a.index - b.index;
               }
               
-              // Strategy 2: Sort by question ID if they're numeric
               const aId = parseInt(a.id);
               const bId = parseInt(b.id);
               if (!isNaN(aId) && !isNaN(bId)) {
                 return aId - bId;
               }
               
-              // Strategy 3: Sort by creation timestamp if available
               if (a.createdAt && b.createdAt) {
                 return a.createdAt - b.createdAt;
               }
               
-              // Strategy 4: Maintain original array order
               return testQuestions.indexOf(a) - testQuestions.indexOf(b);
             });
             
-            console.log('Excel: Original questions order:', testQuestions.map(q => ({ id: q.id, text: q.questionText?.substring(0, 30) })));
-            console.log('Excel: Sorted questions order:', sortedQuestions.map(q => ({ id: q.id, text: q.questionText?.substring(0, 30) })));
-            
-            // Get all question IDs from the test (in sorted order) and try to find answers for them
             sortedQuestions.forEach((question, index) => {
               const questionId = question.id;
               const questionText = question.questionText || `Question ${index + 1}`;
               
-              // Try multiple strategies to find the answer
               let answer = '';
               
-              // Strategy 1: Direct question ID match
               if (submission.answers[questionId]) {
                 answer = submission.answers[questionId];
               }
-              // Strategy 2: String version of question ID
               else if (submission.answers[questionId.toString()]) {
                 answer = submission.answers[questionId.toString()];
               }
-              // Strategy 3: Try index-based keys (0, 1, 2...)
               else if (submission.answers[index]) {
                 answer = submission.answers[index];
               }
               else if (submission.answers[index.toString()]) {
                 answer = submission.answers[index.toString()];
               }
-              // Strategy 4: Try question number patterns (q1, q2, question1, etc.)
               else {
                 const possibleKeys = answerKeys.filter(key => {
                   const keyLower = key.toLowerCase();
@@ -198,33 +137,24 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
                 }
               }
               
-              // Strategy 5: Fallback - use answers by order if we have the same number of questions and answers
               if (!answer && answerKeys.length === testQuestions.length && index < answerKeys.length) {
                 answer = submission.answers[answerKeys[index]];
               }
               
-              // Use full question text as column header (no truncation)
               const columnHeader = questionText;
               
-              // Ensure we have a string answer, use "-" if no answer
               const finalAnswer = answer ? (typeof answer === 'string' ? answer : JSON.stringify(answer)) : '-';
               rowData[columnHeader] = finalAnswer;
-              
-              console.log(`Question ${index + 1}: "${questionText}" -> Answer: "${finalAnswer}"`);
             });
           } else {
-            // No test questions found; create neutral headers without dummy text
-            console.warn('ExcelExport: No test questions found; using neutral headers');
             answerKeys.forEach((answerKey, index) => {
               const answer = submission.answers[answerKey];
               const columnHeader = `Question ${index + 1}`;
               const finalAnswer = answer ? (typeof answer === 'string' ? answer : JSON.stringify(answer)) : '-';
               rowData[columnHeader] = finalAnswer;
-              console.log(`${columnHeader} (Key: ${answerKey}) -> Answer: "${finalAnswer}"`);
             });
           }
         } else {
-          // If no answers object, add empty columns for each question
           testQuestions.forEach((question, index) => {
             const questionText = question.questionText || `Question ${index + 1}`;
             const columnHeader = questionText.length > 50 
@@ -234,23 +164,17 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
           });
         }
 
-        // Add summary information at the end
         rowData['Score Obtained'] = submission.totalMarksAwarded || 0;
         rowData['Percentage'] = `${submission.score || 0}%`;
         rowData['Submitted At'] = submission.submittedAt?.toDate?.()?.toLocaleDateString() || 'N/A';
 
-        console.log('Final row data:', rowData);
-        console.log('Row data keys:', Object.keys(rowData));
-        
         return rowData;
       })
     );
 
-    // Create workbook and worksheet
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.json_to_sheet(enrichedSubmissions);
 
-    // Get all column headers to set appropriate widths
     const headers = enrichedSubmissions.length > 0 ? Object.keys(enrichedSubmissions[0]) : [];
     const colWidths = headers.map(header => {
       if (header === 'Student Name') return { wch: 25 };
@@ -261,7 +185,6 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
       if (header === 'Total Marks') return { wch: 12 };
       if (header === 'Percentage') return { wch: 12 };
       if (header === 'Submitted At') return { wch: 15 };
-      // For question columns, use extra wide width for full-length answers
       return { wch: 60 };
     });
     
@@ -269,15 +192,11 @@ export const exportSubmissionsToExcel = async ({ submissions, selectedTest, setL
 
     XLSX.utils.book_append_sheet(wb, ws, 'Test Results');
 
-    // Generate filename with test title and date
     const fileName = `${selectedTest.title.replace(/[^a-zA-Z0-9]/g, '_')}_Results_${new Date().toISOString().split('T')[0]}.xlsx`;
     
     XLSX.writeFile(wb, fileName);
     
-    alert('Excel file exported successfully!');
   } catch (error) {
-    console.error('Error exporting to Excel:', error);
-    alert('Failed to export Excel file. Please try again.');
   } finally {
     setLoading(false);
   }
